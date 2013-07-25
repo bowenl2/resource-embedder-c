@@ -1,0 +1,55 @@
+#!/usr/bin/env ruby
+
+# make 80 column file.
+# tab = 4,
+# 0x00, = 6
+
+target_binary, c_name = ARGV.map { |arg| arg.dup }
+unless target_binary and c_name then
+  puts "Usage: ./#{ARGV[0]} <target-binary> <c-name>"
+  puts
+  puts "Generates <c-name>.h with:"
+  puts "\textern unsigned char[] <c-name>;"
+  puts "\tconst size_t <c-name>_size = <size of target-binary>;"
+  puts
+  puts "Generates <c-name>.c with:"
+  puts "\tunsigned char[] <c-name> = { ... };"
+  exit(1)
+end
+
+if c_name =~ /\W/ then
+  c_name.gsub!(/\W/, '_')
+  puts "warning: <c-name> contains invalid characters for identifier.  changing to #{c_name}"
+end
+
+header_fname = "#{c_name}.h"
+c_fname = "#{c_name}.c"
+h_include_guard = header_fname.upcase.gsub(/\W/, '_')
+
+puts "processing #{target_binary} into #{header_fname} and #{c_fname}"
+
+File.open(target_binary) do |binary_file|
+  fsize = 0
+
+  abort("#{c_fname} exists!") if File.exists? c_fname
+  File.open(c_fname, "w") do |c_file|
+    c_file.print("unsigned char #{c_name}[] = {")
+    while bytes = binary_file.read(12) do
+      fsize += bytes.length
+      c_file.print("\n    " + bytes.bytes.to_a.map { |byte| "0x%02X" % byte }.join(', ') +
+                   (binary_file.eof? ? '' : ','))
+    end
+    c_file.puts("\n};")
+  end
+
+  abort("#{header_fname} exists!") if File.exists? header_fname
+  File.open(header_fname, "w") do |h_file|
+    h_file.puts("#ifndef #{h_include_guard}")
+    h_file.puts("#define #{h_include_guard}")
+    h_file.puts("extern unsigned char[] #{c_name};")
+    h_file.puts("const size_t #{c_name}_size = #{fsize};")
+    h_file.puts("#endif /* #{h_include_guard} */")
+  end
+
+  puts "processesd #{fsize} bytes"  
+end
